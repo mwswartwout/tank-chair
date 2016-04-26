@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(baxter_gripper)
+project(sentry_baxter_gripper)
 
 find_package(catkin_simple REQUIRED)
 
@@ -15,11 +15,11 @@ catkin_simple()
 # cs_add_library(my_lib src/my_lib.cpp)   
 
 # Executables
-cs_add_executable(baxter_gripper src/baxter_gripper.cpp src/ReadWrite.c src/dynamixel.c src/dxl_hal.c)
+cs_add_executable(sentry_baxter_gripper src/baxter_gripper.cpp src/ReadWrite.c src/dynamixel.c src/dxl_hal.c)
 #cs_add_executable(dynamixel_motor2_node src/dynamixel_motor2_node.cpp src/ReadWrite.c src/dynamixel.c src/dxl_hal.c)
-cs_add_executable(dynamixel_motor_node src/dynamixel_motor_node.cpp src/ReadWrite.c src/dynamixel.c src/dxl_hal.c)
-cs_add_executable(dynamixel_sin_test src/dynamixel_sin_test.cpp )
-cs_add_executable(baxter_gripper_test src/baxter_gripper_test.cpp )
+cs_add_executable(sentry_dynamixel_motor_node src/dynamixel_motor_node.cpp src/ReadWrite.c src/dynamixel.c src/dxl_hal.c)
+cs_add_executable(sentry_dynamixel_sin_test src/dynamixel_sin_test.cpp )
+cs_add_executable(sentry_baxter_gripper_test src/baxter_gripper_test.cpp )
 # target_link_library(example my_lib)
 
 cs_install()

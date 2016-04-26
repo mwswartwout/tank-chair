@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package>
-  <name>baxter_gripper</name>
+  <name>sentry_baxter_gripper</name>
   <version>0.0.0</version>
   <description>The baxter_gripper package</description>
   
