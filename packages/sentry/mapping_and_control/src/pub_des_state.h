@@ -6,7 +6,7 @@
 #include <std_msgs/Float64.h>
 #include <std_msgs/Bool.h>
 #include <std_srvs/Trigger.h>
-#include <mapping_and_control/path.h>
+#include <sentry_mapping_and_control/path.h>
 #include <std_msgs/Float64.h>
 #include <std_msgs/Int32.h>
 
@@ -81,7 +81,7 @@ private:
     bool clearEstopServiceCallback(std_srvs::TriggerRequest& request, std_srvs::TriggerResponse& response);
     bool lidarAlarmServiceCallback(std_srvs::TriggerRequest& request, std_srvs::TriggerResponse& response);
     bool flushPathQueueCB(std_srvs::TriggerRequest& request, std_srvs::TriggerResponse& response);
-    bool appendPathQueueCB(mapping_and_control::pathRequest& request,mapping_and_control::pathResponse& response);
+    bool appendPathQueueCB(sentry_mapping_and_control::pathRequest& request, sentry_mapping_and_control::pathResponse& response);
 
 public:
     DesStatePublisher(ros::NodeHandle& nh);//constructor

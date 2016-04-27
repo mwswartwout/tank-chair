@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(mapping_and_control)
+project(sentry_mapping_and_control)
 
 find_package(catkin_simple REQUIRED)
 
@@ -30,10 +30,10 @@ catkin_simple()
 # Executables: uncomment the following and edit arguments to compile new nodes
 # may add more of these lines for more nodes from the same package
 
-cs_add_executable(lidar src/lidar.cpp)
-cs_add_executable(path_client src/steering_main.cpp)
-cs_add_executable(lin_steering src/lin_steering_wrt_odom.cpp)
-cs_add_executable(pub_des_state_startup src/pub_des_state_startup_main.cpp src/pub_des_state.cpp)
+cs_add_executable(sentry_lidar src/lidar.cpp)
+cs_add_executable(sentry_path_client src/steering_main.cpp)
+cs_add_executable(sentry_lin_steering src/lin_steering_wrt_odom.cpp)
+cs_add_executable(sentry_pub_des_state_startup src/pub_des_state_startup_main.cpp src/pub_des_state.cpp)
 
 #the following is required, if desire to link a node in this package with a library created in this same package
 # edit the arguments to reference the named node and named library within this package

@@ -1,5 +1,5 @@
 #include <ros/ros.h>
-#include <mapping_and_control/path.h>
+#include <sentry_mapping_and_control/path.h>
 #include <iostream>
 #include <string>
 #include <nav_msgs/Path.h>
@@ -131,7 +131,7 @@ void pointClickCallback(const geometry_msgs::PointStamped& pointStamped) {
 
 	//give it another point to go to
 	if (go) {
-		mapping_and_control::path path_srv;
+		sentry_mapping_and_control::path path_srv;
 		pose.position.x = pointStamped.point.x;
 		pose.position.y = pointStamped.point.y;
 		pose_stamped.pose = pose;
@@ -145,14 +145,14 @@ void pointClickCallback(const geometry_msgs::PointStamped& pointStamped) {
 int main(int argc, char **argv) {
 	ros::init(argc, argv, "append_path_client");
 	ros::NodeHandle n;
-	append_client = n.serviceClient<mapping_and_control::path>("append_path_queue_service");
+	append_client = n.serviceClient<sentry_mapping_and_control::path>("append_path_queue_service");
 	flush_client = n.serviceClient<std_srvs::Trigger>("flush_path_queue_service");
 	estop_client = n.serviceClient<std_srvs::Trigger>("estop_service");
 	clear_estop_client = n.serviceClient<std_srvs::Trigger>("clear_estop_service");
 	lidar_alarm_client = n.serviceClient<std_srvs::Trigger>("lidar_alarm_service");
 
 	geometry_msgs::Quaternion quat;
-	mapping_and_control::path path_srv;
+	sentry_mapping_and_control::path path_srv;
 
 	while (!append_client.exists() || !flush_client.exists() ||
 			!estop_client.exists() || !clear_estop_client.exists() ||

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package>
-  <name>exmpl_models</name>
+  <name>sentry_exmpl_models</name>
   <version>0.0.0</version>
   <description>The exmpl_models package</description>
   

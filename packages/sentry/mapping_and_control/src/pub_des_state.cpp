@@ -93,7 +93,7 @@ bool DesStatePublisher::flushPathQueueCB(std_srvs::TriggerRequest& request, std_
     return true;
 }
 
-bool DesStatePublisher::appendPathQueueCB(mapping_and_control::pathRequest& request, mapping_and_control::pathResponse& response) {
+bool DesStatePublisher::appendPathQueueCB(sentry_mapping_and_control::pathRequest& request, sentry_mapping_and_control::pathResponse& response) {
 
     int npts = request.path.poses.size();
     ROS_INFO("appending path queue with %d points", npts);

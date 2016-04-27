@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8.3)
 
-project(odom_tf)
+project(sentry_odom_tf)
 
 find_package(catkin_simple REQUIRED)
 
@@ -31,7 +31,7 @@ catkin_simple()
 # Executables: uncomment the following and edit arguments to compile new nodes
 # may add more of these lines for more nodes from the same package
 
-cs_add_executable(odom_tf src/odom_tf.cpp  src/odom_tf_fncs.cpp)
+cs_add_executable(sentry_odom_tf src/odom_tf.cpp  src/odom_tf_fncs.cpp)
 
 
 #the following is required, if desire to link a node in this package with a library created in this same package

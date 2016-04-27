@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package>
-  <name>mapping_and_control</name>
+  <name>sentry_mapping_and_control</name>
   <version>0.0.0</version>
   <description>The mapping_and_control package</description>
   
