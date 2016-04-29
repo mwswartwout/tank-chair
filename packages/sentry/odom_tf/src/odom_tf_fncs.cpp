@@ -13,7 +13,7 @@ OdomTf::OdomTf(ros::NodeHandle* nodehandle) : nh_(*nodehandle) { // constructor
 
     // wait to start receiving valid tf transforms between odom and link2:
     bool tferr = true;
-    ROS_INFO("waiting for tf between base_link and odom...");
+    ROS_INFO("waiting for tf between base_link and odom..."); 
     while (tferr) {
         tferr = false;
         try {
@@ -23,7 +23,7 @@ OdomTf::OdomTf(ros::NodeHandle* nodehandle) : nh_(*nodehandle) { // constructor
             //See tf/CoordinateFrameConventions#Transform_Direction
             tfListener_->lookupTransform("odom", "base_link", ros::Time(0), stfBaseLinkWrtOdom_);
         } catch (tf::TransformException &exception) {
-            ROS_WARN("%s; retrying...", exception.what());
+            ROS_WARN("%s; retrying!...", exception.what());
             tferr = true;
             ros::Duration(0.5).sleep(); // sleep for half a second
             ros::spinOnce();

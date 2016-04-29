@@ -2,6 +2,7 @@
 //ExampleRosClass::ExampleRosClass(ros::NodeHandle* nodehandle):nh_(*nodehandle)
 
 DesStatePublisher::DesStatePublisher(ros::NodeHandle& nh) : nh_(nh) {
+    
     //as_(nh, "pub_des_state_server", boost::bind(&DesStatePublisher::executeCB, this, _1),false) {
     //as_.start(); //start the server running
     //configure the trajectory builder: 
@@ -27,7 +28,7 @@ DesStatePublisher::DesStatePublisher(ros::NodeHandle& nh) : nh_(nh) {
     halt_twist_.angular.x = 0.0;
     halt_twist_.angular.y = 0.0;
     halt_twist_.angular.z = 0.0;
-    motion_mode_ = DONE_W_SUBGOAL; //init in state ready to process new goal
+    motion_mode_ = OFF; //init in state ready to process new goal
     h_e_stop_ = false;
     e_stop_trigger_ = false; //these are intended to enable e-stop via a service
     e_stop_reset_ = false; //and reset estop
@@ -41,6 +42,16 @@ DesStatePublisher::DesStatePublisher(ros::NodeHandle& nh) : nh_(nh) {
     seg_end_state_ = current_des_state_;
     lidar_alarm = false;
 
+    odom_subscriber_ = nh_.subscribe("/odom", 1, &DesStatePublisher::odomCallback, this); //subscribe to odom messages
+    cmd_mode_subscriber_ = nh_.subscribe("/cmd_mode", 1, &DesStatePublisher::cmdModeCallback, this);
+    go_home_subscriber_ = nh_.subscribe("/go_home", 1, &DesStatePublisher::goHomeRobotYoureDrunk, this);
+}
+
+double DesStatePublisher::convertPlanarQuat2Phi(geometry_msgs::Quaternion quaternion) {
+    double quat_z = quaternion.z;
+    double quat_w = quaternion.w;
+    double phi = 2.0 * atan2(quat_z, quat_w); // cheap conversion from quaternion to heading for planar motion
+    return phi;
 }
 
 void DesStatePublisher::initializeServices() {
@@ -51,6 +62,8 @@ void DesStatePublisher::initializeServices() {
             &DesStatePublisher::clearEstopServiceCallback, this);
 	lidar_alarm_service_ = nh_.advertiseService("lidar_alarm_service",
             &DesStatePublisher::lidarAlarmServiceCallback, this);
+    pop_path_queue_ = nh_.advertiseService("pop_path_queue_service",
+            &DesStatePublisher::popPathQueueCB, this);
     flush_path_queue_ = nh_.advertiseService("flush_path_queue_service",
             &DesStatePublisher::flushPathQueueCB, this);
     append_path_ = nh_.advertiseService("append_path_queue_service",
@@ -93,6 +106,12 @@ bool DesStatePublisher::flushPathQueueCB(std_srvs::TriggerRequest& request, std_
     return true;
 }
 
+bool DesStatePublisher::popPathQueueCB(std_srvs::TriggerRequest& request, std_srvs::TriggerResponse& response) {
+    ROS_WARN("removing element from path queue");
+    path_queue_.pop();
+    return true;
+}
+
 bool DesStatePublisher::appendPathQueueCB(sentry_mapping_and_control::pathRequest& request, sentry_mapping_and_control::pathResponse& response) {
 
     int npts = request.path.poses.size();
@@ -102,6 +121,97 @@ bool DesStatePublisher::appendPathQueueCB(sentry_mapping_and_control::pathReques
     }
     return true;
 }
+
+void DesStatePublisher::odomCallback(const nav_msgs::Odometry& odom_rcvd) { 
+
+    current_state_ = odom_rcvd;
+
+    geometry_msgs::Pose odom_pose_ = odom_rcvd.pose.pose;
+    geometry_msgs::Quaternion odom_quat_ = odom_rcvd.pose.pose.orientation;
+    double odom_phi_ = convertPlanarQuat2Phi(odom_quat_); // cheap conversion from quaternion to heading for planar motion
+    tf::Vector3 pos;
+    pos.setX(odom_pose_.position.x);
+    pos.setY(odom_pose_.position.y);
+    pos.setZ(odom_pose_.position.z);
+
+    stfBaseLinkWrtOdom_.stamp_ = ros::Time::now();
+    stfBaseLinkWrtOdom_.setOrigin(pos);
+
+    tf::Quaternion q;
+    q.setX(odom_quat_.x);
+    q.setY(odom_quat_.y);
+    q.setZ(odom_quat_.z);
+    q.setW(odom_quat_.w);
+
+    stfBaseLinkWrtOdom_.setRotation(q);
+
+    stfBaseLinkWrtOdom_.frame_id_ = "odom";
+    stfBaseLinkWrtOdom_.child_frame_id_ = "base_link";
+
+    br_.sendTransform(stfBaseLinkWrtOdom_);
+
+    //look at the odom, if we've moved significantly, append a path point to our return path
+    geometry_msgs::PoseStamped poseToAdd;
+    poseToAdd.pose = current_state_.pose.pose;
+    poseToAdd.header = current_state_.header;
+
+    if (return_path_stack.empty()) {
+        ROS_INFO("return_path_stack got its first point");
+        return_path_stack.push(poseToAdd);
+    }
+    else {
+        //only add a point if we've moved at least return_path_point_spacing meter
+        //and our heading is different by at least 
+        geometry_msgs::PoseStamped topPoseInStack = return_path_stack.top();
+
+        double currentX = current_state_.pose.pose.position.x;
+        double currentY = current_state_.pose.pose.position.y;
+        double lastX = topPoseInStack.pose.position.x;
+        double lastY = topPoseInStack.pose.position.y;
+        double dist = sqrt(pow(lastX - currentX,2) + pow(lastY - currentY,2));  //thanks pythagoras, you da man 
+
+        double current_psi = trajBuilder_.convertPlanarQuat2Psi(current_state_.pose.pose.orientation);
+        double last_psi = trajBuilder_.convertPlanarQuat2Psi(topPoseInStack.pose.orientation);
+        double psiDiff = abs(current_psi - last_psi);
+
+        if (dist >= return_path_point_spacing && psiDiff >= return_path_delta_phi) {
+            ROS_INFO("return_path_stack got a point");
+            return_path_stack.push(poseToAdd);
+        }
+    }
+}
+
+void DesStatePublisher::cmdModeCallback(const std_msgs::Int32& message_holder) {
+
+    if (message_holder.data != 0 && message_holder.data != 1) {
+            ROS_WARN("Got unexpected motion_mode_ from cmd_mode topic");
+    }
+    else if (message_holder.data == 0) {
+        motion_mode_ = OFF;
+    }
+    else if (message_holder.data == 1 && motion_mode_ == OFF) {
+        motion_mode_ = DONE_W_SUBGOAL;
+    }
+
+}
+
+void DesStatePublisher::goHomeRobotYoureDrunk(const std_msgs::Int32& message_holder) {
+    
+    if (motion_mode_ != OFF) {
+
+        ROS_WARN("Robot going home");
+
+        while (!return_path_stack.empty()) {
+            path_queue_.push(return_path_stack.top());
+            return_path_stack.pop();
+        }
+    }
+    else {
+        ROS_WARN("Robot not drunk enough to go home");
+    }
+}
+
+
 
 void DesStatePublisher::set_init_pose(double x, double y, double psi) {
     current_pose_ = trajBuilder_.xyPsi2PoseStamped(x, y, psi);
@@ -125,51 +235,65 @@ void DesStatePublisher::set_init_pose(double x, double y, double psi) {
 // or points can be appended to path queue w/ service append_path_
 
 void DesStatePublisher::pub_next_state() {
-    // first test if an e-stop has been triggered
-    if (e_stop_trigger_ && ((motion_mode_!=HALTING) && (motion_mode_!=E_STOPPED))) {
-    	ROS_WARN("E-STOP TRIGGERED");
-        e_stop_trigger_ = false; //reset trigger
-        //compute a halt trajectory
-        trajBuilder_.build_braking_traj(current_pose_, des_state_vec_,current_vel_state);
-        motion_mode_ = HALTING;
-        traj_pt_i_ = 0;
-        npts_traj_ = des_state_vec_.size();
-    }
 
-    if (h_e_stop_ && ((motion_mode_!=HALTING) && (motion_mode_!=E_STOPPED))) {
-    	ROS_WARN("HARDWARE E-STOP TRIGGERED");
-        h_e_stop_ = false; //reset trigger
-        //compute a halt trajectory
-        trajBuilder_.build_braking_traj(current_pose_, des_state_vec_,current_vel_state);
-        motion_mode_ = HALTING;
-        traj_pt_i_ = 0;
-        npts_traj_ = des_state_vec_.size();
-    }
 
-    if (lidar_alarm && ((motion_mode_!=HALTING) && (motion_mode_!=E_STOPPED))) {
-    	ROS_WARN("LIDAR ALARM TRIGGERED");
-        lidar_alarm = false; //reset trigger
-        //compute a halt trajectory
-        trajBuilder_.build_braking_traj(current_pose_, des_state_vec_,current_vel_state);
-        motion_mode_ = HALTING;
-        traj_pt_i_ = 0;
-        npts_traj_ = des_state_vec_.size();
-    }
+    //skip if in off mode
+    if (!OFF) {
+        // first test if an e-stop has been triggered
+       if (e_stop_trigger_ && ((motion_mode_!=HALTING) && (motion_mode_!=E_STOPPED))) {
+           	ROS_WARN("E-STOP TRIGGERED");
+            e_stop_trigger_ = false; //reset trigger
+            //compute a halt trajectory
+            trajBuilder_.build_braking_traj(current_pose_, des_state_vec_,current_vel_state);
+            motion_mode_ = HALTING;
+            traj_pt_i_ = 0;
+            npts_traj_ = des_state_vec_.size();
+        }
 
-    //or if an e-stop has been cleared
-    if (e_stop_reset_) {
-        e_stop_reset_ = false; //reset trigger
-        if (motion_mode_ != E_STOPPED) {
-            ROS_WARN("e-stop reset while not in e-stop mode");
-        }            //OK...want to resume motion from e-stopped mode;
-        else {
-            motion_mode_ = DONE_W_SUBGOAL; //this will pick up where left off
-            ROS_INFO("DONE WITH SUBGOAL");
+        if (h_e_stop_ && ((motion_mode_!=HALTING) && (motion_mode_!=E_STOPPED))) {
+        	ROS_WARN("HARDWARE E-STOP TRIGGERED");
+            h_e_stop_ = false; //reset trigger
+            //compute a halt trajectory
+            trajBuilder_.build_braking_traj(current_pose_, des_state_vec_,current_vel_state);
+            motion_mode_ = HALTING;
+            traj_pt_i_ = 0;
+            npts_traj_ = des_state_vec_.size();
+        }
+
+        if (lidar_alarm && ((motion_mode_!=HALTING) && (motion_mode_!=E_STOPPED))) {
+        	ROS_WARN("LIDAR ALARM TRIGGERED");
+            lidar_alarm = false; //reset trigger
+            //compute a halt trajectory
+            trajBuilder_.build_braking_traj(current_pose_, des_state_vec_,current_vel_state);
+            motion_mode_ = HALTING;
+            traj_pt_i_ = 0;
+            npts_traj_ = des_state_vec_.size();
+        }
+
+        //or if an e-stop has been cleared
+        if (e_stop_reset_) {
+            e_stop_reset_ = false; //reset trigger
+            if (motion_mode_ != E_STOPPED) {
+                ROS_WARN("e-stop reset while not in e-stop mode");
+            }            //OK...want to resume motion from e-stopped mode;
+            else {
+                motion_mode_ = DONE_W_SUBGOAL; //this will pick up where left off
+                ROS_INFO("DONE WITH SUBGOAL");
+            }
         }
     }
 
     //state machine; results in publishing a new desired state
     switch (motion_mode_) {
+        case OFF: //occurs when robot is switched to you the controller instead of this
+            //constantly update current pose
+            current_pose_.pose = current_state_.pose.pose;
+            current_pose_.header = current_state_.header;
+
+            seg_end_state_ = current_state_;
+            //publish whatever current state is as desired state
+            desired_state_publisher_.publish(current_state_);
+            break;
         case E_STOPPED: //this state must be reset by a service
             desired_state_publisher_.publish(halt_state_);
             break;
@@ -231,7 +355,7 @@ void DesStatePublisher::pub_next_state() {
             //it to compute a new trajectory and change motion mode
             if (!path_queue_.empty()) {
                 int n_path_pts = path_queue_.size();
-                ROS_INFO("%d points in path queue", n_path_pts);
+                ROS_WARN("%d points in path queue", n_path_pts);
                 start_pose_ = current_pose_;
                 end_pose_ = path_queue_.front();
                 trajBuilder_.build_point_and_go_traj(start_pose_, end_pose_, des_state_vec_);

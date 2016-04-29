@@ -16,6 +16,7 @@ geometry_msgs::PoseStamped pose_stamped;
 geometry_msgs::Pose pose;
 ros::ServiceClient append_client;
 ros::ServiceClient flush_client;
+ros::ServiceClient pop_client;
 ros::ServiceClient estop_client;
 ros::ServiceClient clear_estop_client;
 ros::ServiceClient lidar_alarm_client;
@@ -24,6 +25,8 @@ const int E_STOPPED = 0; //define some mode keywords
 const int DONE_W_SUBGOAL = 1;
 const int PURSUING_SUBGOAL = 2;
 const int HALTING = 3;
+const int OFF = 4;
+
 int motionMode = -1;
 
 //Used to prevent the robot from getting stuck near a wall by
@@ -51,8 +54,16 @@ void lidarAlarmCallback(const std_msgs::Bool& lidarAlarmMsg) {
 	std_srvs::Trigger request;
 
 	switch (motionMode) {
+	case OFF: {
+		//do nothing here
+	}
 	case E_STOPPED:
 	{
+		if (lidar_alarm_sent_recently && !lidarAlarmMsg.data) {
+			//if we're estopped and not in danger, reset the lidar alarm
+			lidar_alarm_sent_recently = false;
+			ROS_INFO("LIDAR ALARM RESET (safely stopped)");
+		}
 		break;
 	}
 	case HALTING:
@@ -63,12 +74,16 @@ void lidarAlarmCallback(const std_msgs::Bool& lidarAlarmMsg) {
 	{
 		//only set off lidar alarm if the alarm is true,
 		//we are on the way to a subgoal,
-		//and it hasn't been set off in the last 5 seconds
+		//and it hasn't been set off recently
 		//(to allow it to turn away from an obstacle)
 		if (lidarAlarmMsg.data && !lidar_alarm_sent_recently) {
 			lidar_alarm_client.call(request);
+			ROS_WARN("LIDAR ALARM DISABLED");
 			lidar_alarm_sent_recently = true;
-			flush_client.call(request);
+			pop_client.call(request);
+		}
+		else if(lidarAlarmMsg.data && lidar_alarm_sent_recently) {
+			ROS_WARN("LIDAR ALARM IGNORED");
 		}
 		break;
 	}
@@ -88,10 +103,12 @@ void pointClickCallback(const geometry_msgs::PointStamped& pointStamped) {
 
 	//does nothing, but is required parameter
 	std_srvs::Trigger request;
-
 	bool go = false;
 
 	switch (motionMode) {
+	case OFF: {
+		//do nothing here
+	}
 	case E_STOPPED:
 	{
 		ROS_INFO("State: E_STOPPED");
@@ -112,12 +129,13 @@ void pointClickCallback(const geometry_msgs::PointStamped& pointStamped) {
 		//halt the robot if moving when given a new point
 		estop_client.call(request);
 		//remove any subgoals in the queue
-		flush_client.call(request);
+		pop_client.call(request);
 		break;
 	}
 	case DONE_W_SUBGOAL:
 	{
 		ROS_INFO("State: DONE_W_SUBGOAL");
+		ROS_INFO("LIDAR ALARM RESET (done with subgoal)");
 		lidar_alarm_sent_recently = false; //reset the lidar alarm, allow it to go off again
 		go = true;
 		break;
@@ -147,6 +165,7 @@ int main(int argc, char **argv) {
 	ros::NodeHandle n;
 	append_client = n.serviceClient<sentry_mapping_and_control::path>("append_path_queue_service");
 	flush_client = n.serviceClient<std_srvs::Trigger>("flush_path_queue_service");
+	pop_client = n.serviceClient<std_srvs::Trigger>("pop_path_queue_service");
 	estop_client = n.serviceClient<std_srvs::Trigger>("estop_service");
 	clear_estop_client = n.serviceClient<std_srvs::Trigger>("clear_estop_service");
 	lidar_alarm_client = n.serviceClient<std_srvs::Trigger>("lidar_alarm_service");
@@ -156,7 +175,7 @@ int main(int argc, char **argv) {
 
 	while (!append_client.exists() || !flush_client.exists() ||
 			!estop_client.exists() || !clear_estop_client.exists() ||
-			!lidar_alarm_client.exists()) {
+			!lidar_alarm_client.exists() || !pop_client.exists()) {
 		ROS_INFO("waiting for services...");
 		ros::Duration(1.0).sleep();
 	}
@@ -181,10 +200,8 @@ int main(int argc, char **argv) {
 	//
 	//	append_client.call(path_srv);
 
-
 	ros::Subscriber point_click_subscriber = n.subscribe("clicked_point", 1, pointClickCallback);
 	ros::Subscriber motion_mode_subscriber = n.subscribe("motion_mode", 1, motionModeCallback);
-	ros::Subscriber lidar_subscriber = n.subscribe("lidar_alarm", 1, lidarAlarmCallback);
 
 	ros::spin(); //this is essentially a "while(1)" statement, except it
 	// forces refreshing wakeups upon new data arrival

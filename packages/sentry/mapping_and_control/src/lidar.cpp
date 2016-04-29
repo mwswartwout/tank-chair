@@ -33,14 +33,12 @@ void laserCallback(const sensor_msgs::LaserScan& laser_scan) {
 		// what is the index of the ping that is straight ahead?
 		// BETTER would be to use transforms, which would reference how the LIDAR is mounted;
 		// but this will do for simple illustration
-		ROS_INFO("%f",angle_min_);
-		ROS_INFO("%f",angle_max_);
-		ROS_INFO("%f",angle_increment_);
-		ROS_INFO("%f",range_min_);
-		ROS_INFO("%f",range_max_);
+		// ROS_INFO("%f",angle_min_);
+		// ROS_INFO("%f",angle_max_);
+		// ROS_INFO("%f",angle_increment_);
+		// ROS_INFO("%f",range_min_);
+		// ROS_INFO("%f",range_max_);
 	}
-
-	//TODO lidar alarm does not work after manual estop via point click 
 
 	lidar_alarm_ = false;
 	for (int i = 0; i <= M_PI/angle_increment_ + 1; i++) {
